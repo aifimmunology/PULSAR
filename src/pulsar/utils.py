@@ -33,12 +33,13 @@ def collate_fn(
     labels = []
     donor_ids = []
     return_cell_expr_list = []
-    
+    sampled_global_indices_list = []
+
     for item in batch:
         donor_embedding = item["cell_embedding"]
         cell_type_data = item["cell_type_idx"]
         num_cells = len(cell_type_data)
-        
+
         # Sample max_length cells from each donor
         if resample:
             if num_cells < max_length:
@@ -47,32 +48,39 @@ def collate_fn(
             else:
                 sample_idx = np.random.choice(num_cells, max_length, replace=replace)
             sampled_embeddings = donor_embedding[sample_idx]
-            
+
             if return_cell_expr:
                 cell_expr = item["cell_expr"][sample_idx]
         else:
+            sample_idx = None
             sampled_embeddings = donor_embedding
             if return_cell_expr:
                 cell_expr = item["cell_expr"]
-        
+
+        # Track which global AnnData rows were sampled
+        if "cell_global_indices" in item:
+            global_indices = item["cell_global_indices"]
+            sampled_global = global_indices[sample_idx] if sample_idx is not None else global_indices
+            sampled_global_indices_list.append(np.asarray(sampled_global, dtype=np.intp))
+
         # -1 for compatibility with the model
         cell_type_indices = [-1]
-        
+
         cell_embeddings_list.append(sampled_embeddings)
         cell_type_idx_list.append(cell_type_indices)
         labels.append(item.get("labels", 0.0))
         donor_ids.append(item["donor_id"])
-        
+
         if return_cell_expr:
             return_cell_expr_list.append(cell_expr)
-    
+
     # Convert to tensors
     if isinstance(cell_embeddings_list[0], np.ndarray):
         cell_embeddings_list = [torch.tensor(x) for x in cell_embeddings_list]
-    
+
     cell_embeddings_tensor = torch.stack(cell_embeddings_list)
     cell_type_idx_tensor = torch.tensor(cell_type_idx_list, dtype=torch.long)
-    
+
     labels_array = np.array(labels)
     if labels_array.dtype.type is np.str_:
         # Keep string labels as-is
@@ -86,10 +94,13 @@ def collate_fn(
         "labels": labels_tensor,
         "donor_id": donor_ids,
     }
-    
+
     if return_cell_expr:
         return_dict["cell_expr"] = torch.stack(return_cell_expr_list)
-    
+
+    if sampled_global_indices_list:
+        return_dict["sampled_cell_indices"] = sampled_global_indices_list
+
     return return_dict
 
 
@@ -185,7 +196,9 @@ def extract_donor_embeddings_from_h5ad(
                 donor_embeddings = output[0][:, 0, :].cpu().to(torch.float32).numpy()
                 
                 # Store embeddings for each donor
+                has_indices = "sampled_cell_indices" in batch
                 for idx, donor_id in enumerate(donor_ids):
+                    sampled_idx = batch["sampled_cell_indices"][idx] if has_indices else None
                     if donor_id not in donor_embedding_collection:
                         donor_embedding_collection[donor_id] = {
                             "embedding": [donor_embeddings[idx]],
@@ -194,11 +207,16 @@ def extract_donor_embeddings_from_h5ad(
                                 if "labels" in batch
                                 else None
                             ),
+                            "sampled_indices": [sampled_idx] if sampled_idx is not None else [],
                         }
                     else:
                         donor_embedding_collection[donor_id]["embedding"].append(
                             donor_embeddings[idx]
                         )
+                        if sampled_idx is not None:
+                            donor_embedding_collection[donor_id]["sampled_indices"].append(
+                                sampled_idx
+                            )
     
     return donor_embedding_collection
 

@@ -250,6 +250,7 @@ class DonorDatasetAnndata(Dataset):
             "cell_embedding": cell_embedding,
             "cell_type_idx": [-1]
             * len(indices),  # for compatibility with the collate function
+            "cell_global_indices": np.asarray(indices, dtype=np.intp),
         }
         if self.label_name is not None:
             label = self.donor_id_to_label[donor_id]
