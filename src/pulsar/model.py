@@ -381,10 +381,10 @@ class PULSAR(PULSARPreTrainedModel):
         if config.cls_transform:
             self.cls_transform = Projector(config.hidden_size, config.hidden_size)
     
-        self._init_weights(self)
-        
         if config.frozen:
             self.encoder.freeze()
+
+        self.post_init()
 
     def freeze_encoder_by_layer(self, n: int) -> None:
         """
@@ -531,8 +531,8 @@ class PULSARForRegression(PULSARPreTrainedModel):
             nn.ReLU(),
             nn.Linear(config.hidden_size * config.expansion_factor, config.num_labels)
         )
-        
-        self._init_weights(self)
+
+        self.post_init()
     
 
     def forward(
@@ -599,7 +599,7 @@ class PULSARForClassification(PULSARPreTrainedModel):
             nn.Linear(config.hidden_size * config.expansion_factor, self.num_labels)
         )
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self._init_weights(self)
+        self.post_init()
 
 
     def forward(
