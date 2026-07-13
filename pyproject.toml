@@ -9,7 +9,7 @@ dependencies = [
     "duckdb>=1.4.1",
     "scanpy>=1.11.4",
     "torch>=2.8.0",
-    "transformers>=4.57.0",
+    "transformers>=5.5.0",
 ]
 [tool.setuptools.packages.find]
 where = ["src"]
